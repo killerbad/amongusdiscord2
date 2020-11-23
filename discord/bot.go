@@ -3,11 +3,8 @@ package discord
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
-	"os"
-	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -19,8 +16,6 @@ import (
 	socketio "github.com/googollee/go-socket.io"
 	"github.com/gorilla/mux"
 )
-
-const DefaultPort = "8123"
 
 type GameOrLobbyCode struct {
 	gameCode    string
@@ -35,9 +30,8 @@ const (
 )
 
 type BroadcastMessage struct {
-	Type    BcastMsgType
-	Data    int
-	Message string
+	Type BcastMsgType
+	Data int
 }
 
 type LobbyStatus struct {
@@ -53,20 +47,16 @@ type SocketStatus struct {
 type SessionManager struct {
 	PrimarySession *discordgo.Session
 	AltSession     *discordgo.Session
-	//AltSessionGuilds is a record of which guilds also have the 2nd bot added to them (and therefore should be allowed to
-	//use the 2nd bot token
-	AltSessionGuilds map[string]struct{}
-	count            int
-	lock             sync.RWMutex
+	count          int
+	countLock      sync.Mutex
 }
 
 func NewSessionManager(primary, secondary *discordgo.Session) SessionManager {
 	return SessionManager{
-		PrimarySession:   primary,
-		AltSession:       secondary,
-		AltSessionGuilds: make(map[string]struct{}),
-		count:            0,
-		lock:             sync.RWMutex{},
+		PrimarySession: primary,
+		AltSession:     secondary,
+		count:          0,
+		countLock:      sync.Mutex{},
 	}
 }
 
@@ -74,26 +64,20 @@ func (sm *SessionManager) GetPrimarySession() *discordgo.Session {
 	return sm.PrimarySession
 }
 
-func (sm *SessionManager) GetSessionForRequest(guildID string) *discordgo.Session {
+func (sm *SessionManager) GetSessionForRequest() *discordgo.Session {
 	if sm.AltSession == nil {
 		return sm.PrimarySession
 	}
-	sm.lock.Lock()
-	defer sm.lock.Unlock()
+	sm.countLock.Lock()
+	defer sm.countLock.Unlock()
 
-	//only bother using a separate token/session if the guild also has that bot invited/a member
-	if _, hasSecond := sm.AltSessionGuilds[guildID]; hasSecond {
-		sm.count++
-		if sm.count%2 == 0 {
-			log.Println("Using primary session for request")
-			return sm.PrimarySession
-		} else {
-			log.Println("Using secondary session for request")
-			return sm.AltSession
-		}
-	} else {
+	sm.count++
+	if sm.count%2 == 0 {
 		log.Println("Using primary session for request")
 		return sm.PrimarySession
+	} else {
+		log.Println("Using secondary session for request")
+		return sm.AltSession
 	}
 }
 
@@ -107,15 +91,10 @@ func (sm *SessionManager) Close() {
 	}
 }
 
-func (sm *SessionManager) RegisterGuildSecondSession(guildID string) {
-	sm.lock.Lock()
-	sm.AltSessionGuilds[guildID] = struct{}{}
-	sm.lock.Unlock()
-}
-
 type Bot struct {
 	url                     string
-	internalPort            string
+	socketPort              string
+	extPort                 string
 	AllConns                map[string]string
 	AllGuilds               map[string]*GuildState
 	LinkCodes               map[GameOrLobbyCode]string
@@ -136,46 +115,40 @@ type Bot struct {
 	SessionManager SessionManager
 
 	StorageInterface storage.StorageInterface
-
-	UserSettings *storage.UserSettingsCollection
-
-	logPath string
-
-	captureTimeout int
 }
 
 func (bot *Bot) PushGuildSocketUpdate(guildID string, status SocketStatus) {
 	bot.ChannelsMapLock.RLock()
-	channel := bot.SocketUpdateChannels[guildID]
+	channel := *(bot.SocketUpdateChannels)[guildID]
 	if channel != nil {
-		*channel <- status
+		channel <- status
 	}
 	bot.ChannelsMapLock.RUnlock()
 }
 
 func (bot *Bot) PushGuildPlayerUpdate(guildID string, status game.Player) {
 	bot.ChannelsMapLock.RLock()
-	channel := bot.PlayerUpdateChannels[guildID]
+	channel := *(bot.PlayerUpdateChannels)[guildID]
 	if channel != nil {
-		*channel <- status
+		channel <- status
 	}
 	bot.ChannelsMapLock.RUnlock()
 }
 
 func (bot *Bot) PushGuildPhaseUpdate(guildID string, status game.Phase) {
 	bot.ChannelsMapLock.RLock()
-	channel := bot.GamePhaseUpdateChannels[guildID]
+	channel := *(bot.GamePhaseUpdateChannels)[guildID]
 	if channel != nil {
-		*channel <- status
+		channel <- status
 	}
 	bot.ChannelsMapLock.RUnlock()
 }
 
 func (bot *Bot) PushGuildLobbyUpdate(guildID string, status LobbyStatus) {
 	bot.ChannelsMapLock.RLock()
-	channel := bot.LobbyUpdateChannels[guildID]
+	channel := *(bot.LobbyUpdateChannels)[guildID]
 	if channel != nil {
-		*channel <- status
+		channel <- status
 	}
 	bot.ChannelsMapLock.RUnlock()
 }
@@ -184,7 +157,7 @@ var Version string
 
 // MakeAndStartBot does what it sounds like
 //TODO collapse these fields into proper structs?
-func MakeAndStartBot(version, token, token2, url, internalPort, emojiGuildID string, numShards, shardID int, storageClient storage.StorageInterface, logPath string, timeoutSecs int) *Bot {
+func MakeAndStartBot(version, token, token2, url, port, extPort, emojiGuildID string, numShards, shardID int, storageClient storage.StorageInterface) *Bot {
 	Version = version
 
 	var altDiscordSession *discordgo.Session = nil
@@ -215,7 +188,8 @@ func MakeAndStartBot(version, token, token2, url, internalPort, emojiGuildID str
 
 	bot := Bot{
 		url:                     url,
-		internalPort:            internalPort,
+		socketPort:              port,
+		extPort:                 extPort,
 		AllConns:                make(map[string]string),
 		AllGuilds:               make(map[string]*GuildState),
 		LinkCodes:               make(map[GameOrLobbyCode]string),
@@ -228,9 +202,6 @@ func MakeAndStartBot(version, token, token2, url, internalPort, emojiGuildID str
 		ChannelsMapLock:         sync.RWMutex{},
 		SessionManager:          NewSessionManager(dg, altDiscordSession),
 		StorageInterface:        storageClient,
-		UserSettings:            storageClient.GetAllUserSettings(),
-		logPath:                 logPath,
-		captureTimeout:          timeoutSecs,
 	}
 
 	dg.AddHandler(bot.voiceStateChange())
@@ -249,7 +220,7 @@ func MakeAndStartBot(version, token, token2, url, internalPort, emojiGuildID str
 	}
 
 	if altDiscordSession != nil {
-		altDiscordSession.AddHandler(bot.newAltGuild)
+		altDiscordSession.AddHandler(newAltGuild)
 		altDiscordSession.Identify.Intents = discordgo.MakeIntent(discordgo.IntentsGuilds)
 		err = altDiscordSession.Open()
 		if err != nil {
@@ -260,28 +231,15 @@ func MakeAndStartBot(version, token, token2, url, internalPort, emojiGuildID str
 
 	// Wait here until CTRL-C or other term signal is received.
 
-	bot.Run(internalPort)
+	bot.Run()
 
 	return &bot
 }
 
-func (bot *Bot) Run(port string) {
-	go bot.socketioServer(port)
+func (bot *Bot) Run() {
+	go bot.socketioServer(bot.socketPort)
 }
 
-func (bot *Bot) GracefulClose(seconds int, message string) {
-	bot.ChannelsMapLock.RLock()
-	for _, v := range bot.GlobalBroadcastChannels {
-		if v != nil {
-			*v <- BroadcastMessage{
-				Type:    GRACEFUL_SHUTDOWN,
-				Data:    seconds,
-				Message: message,
-			}
-		}
-	}
-	bot.ChannelsMapLock.RUnlock()
-}
 func (bot *Bot) Close() {
 	bot.SessionManager.Close()
 }
@@ -303,8 +261,6 @@ func (bot *Bot) guildIDForCode(code string) string {
 }
 
 func (bot *Bot) socketioServer(port string) {
-	inactiveWorkerChannels := make(map[string]chan string)
-
 	server, err := socketio.NewServer(nil)
 	if err != nil {
 		log.Fatal(err)
@@ -312,13 +268,10 @@ func (bot *Bot) socketioServer(port string) {
 	server.OnConnect("/", func(s socketio.Conn) error {
 		s.SetContext("")
 		log.Println("connected:", s.ID())
-		inactiveWorkerChannels[s.ID()] = make(chan string)
-		go bot.InactiveGameWorker(s, inactiveWorkerChannels[s.ID()])
 		return nil
 	})
 	server.OnEvent("/", "connectCode", func(s socketio.Conn, msg string) {
 		log.Printf("Received connection code: \"%s\"", msg)
-
 		guildID := bot.guildIDForCode(msg)
 		if guildID == "" {
 			log.Printf("No guild has the current connect code of %s\n", msg)
@@ -328,9 +281,6 @@ func (bot *Bot) socketioServer(port string) {
 		if guild, ok := bot.AllGuilds[guildID]; ok {
 			bot.AllConns[s.ID()] = guildID
 			guild.Linked = true
-			if v, ok := inactiveWorkerChannels[s.ID()]; ok {
-				v <- guildID
-			}
 
 			bot.PushGuildSocketUpdate(guildID, SocketStatus{
 				GuildID:   guildID,
@@ -358,11 +308,8 @@ func (bot *Bot) socketioServer(port string) {
 			}
 
 			if guildID != "" {
-				if v, ok := inactiveWorkerChannels[s.ID()]; ok {
-					v <- guildID
-				}
-				if _, ok := bot.AllGuilds[guildID]; ok { // Game is connected -> update its room code
-					log.Println("Received room code", msg, "for guild", guildID, "from capture")
+				if guild, ok := bot.AllGuilds[guildID]; ok { // Game is connected -> update its room code
+					log.Println("Received room code", msg, "for guild", guild.PersistentGuildData.GuildID, "from capture")
 				} else {
 					bot.PushGuildSocketUpdate(guildID, SocketStatus{
 						GuildID:   guildID,
@@ -391,9 +338,6 @@ func (bot *Bot) socketioServer(port string) {
 			log.Println(err)
 		} else {
 			if gid, ok := bot.AllConns[s.ID()]; ok && gid != "" {
-				if v, ok := inactiveWorkerChannels[s.ID()]; ok {
-					v <- gid
-				}
 				log.Println("Pushing phase event to channel")
 				bot.PushGuildPhaseUpdate(gid, game.Phase(phase))
 			} else {
@@ -409,9 +353,6 @@ func (bot *Bot) socketioServer(port string) {
 			log.Println(err)
 		} else {
 			if gid, ok := bot.AllConns[s.ID()]; ok && gid != "" {
-				if v, ok := inactiveWorkerChannels[s.ID()]; ok {
-					v <- gid
-				}
 				bot.PushGuildPlayerUpdate(gid, player)
 			} else {
 				log.Println("This websocket is not associated with any guilds")
@@ -424,7 +365,31 @@ func (bot *Bot) socketioServer(port string) {
 	server.OnDisconnect("/", func(s socketio.Conn, reason string) {
 		log.Println("Client connection closed: ", reason)
 
-		bot.PurgeConnection(s.ID())
+		previousGid := bot.AllConns[s.ID()]
+		delete(bot.AllConns, s.ID())
+		bot.LinkCodeLock.Lock()
+		for i, v := range bot.LinkCodes {
+			//delete the association between the link code and the guild
+			if v == previousGid {
+				delete(bot.LinkCodes, i)
+				break
+			}
+		}
+		bot.LinkCodeLock.Unlock()
+
+		for gid, guild := range bot.AllGuilds {
+			if gid == previousGid {
+				bot.LinkCodeLock.Lock()
+				guild.Linked = false
+				bot.LinkCodeLock.Unlock()
+				bot.PushGuildSocketUpdate(gid, SocketStatus{
+					GuildID:   gid,
+					Connected: false,
+				})
+
+				log.Printf("Deassociated websocket id %s with guildID %s\n", s.ID(), gid)
+			}
+		}
 	})
 	go server.Serve()
 	defer server.Close()
@@ -433,113 +398,26 @@ func (bot *Bot) socketioServer(port string) {
 
 	router := mux.NewRouter()
 	router.Handle("/socket.io/", server)
-	router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, "Auto-Mute Us is up and running.")
-	})
 
 	log.Printf("Serving at localhost:%s...\n", port)
 	log.Fatal(http.ListenAndServe(":"+port, router))
 }
 
-func (bot *Bot) PurgeConnection(socketID string) {
+func MessagesServer(port string, bots []*Bot) {
 
-	previousGid := bot.AllConns[socketID]
-	delete(bot.AllConns, socketID)
-	//bot.LinkCodeLock.Lock()
-	//for i, v := range bot.LinkCodes {
-	//	//delete the association between the link code and the guild
-	//	if v == previousGid {
-	//		delete(bot.LinkCodes, i)
-	//		break
-	//	}
-	//}
-	//bot.LinkCodeLock.Unlock()
-
-	for gid, guild := range bot.AllGuilds {
-		if gid == previousGid {
-			bot.LinkCodeLock.Lock()
-			guild.Linked = false
-			bot.LinkCodeLock.Unlock()
-			bot.PushGuildSocketUpdate(gid, SocketStatus{
-				GuildID:   gid,
-				Connected: false,
-			})
-
-			log.Printf("Deassociated websocket id %s with guildID %s\n", socketID, gid)
-		}
-	}
-	log.Print("Done purging")
-}
-
-func (bot *Bot) InactiveGameWorker(socket socketio.Conn, c <-chan string) {
-	timer := time.NewTimer(time.Second * time.Duration(bot.captureTimeout))
-	guildID := ""
-	for {
-		select {
-		case <-timer.C:
-			log.Printf("Socket ID %s timed out with no new messages after %d seconds\n", socket.ID(), bot.captureTimeout)
-			socket.Close()
-			bot.PurgeConnection(socket.ID())
-
-			if v, ok := bot.GlobalBroadcastChannels[guildID]; ok {
-				if v != nil {
-					*v <- BroadcastMessage{
-						Type:    GRACEFUL_SHUTDOWN,
-						Data:    1,
-						Message: fmt.Sprintf("**I haven't received any messages from your capture in %d seconds, so I'm ending the game!**", bot.captureTimeout),
-					}
-				}
-			}
-			//
-			//bot.LinkCodeLock.Lock()
-			//for i, v := range bot.LinkCodes {
-			//	//delete the association between the link code and the guild
-			//	if v == guildID {
-			//		delete(bot.LinkCodes, i)
-			//		break
-			//	}
-			//}
-			//bot.LinkCodeLock.Unlock()
-			timer.Stop()
-			return
-		case b := <-c:
-			if b != "" {
-				guildID = b
-			}
-			//received true; the socket is alive
-			log.Printf("Bot inactivity timer has been reset to %d seconds\n", bot.captureTimeout)
-			timer.Reset(time.Second * time.Duration(bot.captureTimeout))
-		}
-	}
-}
-
-func MessagesServer(port string, bot *Bot) {
 	http.HandleFunc("/graceful", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
+		for _, bot := range bots {
 			bot.ChannelsMapLock.RLock()
 			for _, v := range bot.GlobalBroadcastChannels {
 				if v != nil {
 					*v <- BroadcastMessage{
-						Type:    GRACEFUL_SHUTDOWN,
-						Data:    30,
-						Message: fmt.Sprintf("I'm being shut down in %d seconds, and will be closing your active game!", 30),
+						Type: GRACEFUL_SHUTDOWN,
+						Data: 30,
 					}
 				}
 			}
 			bot.ChannelsMapLock.RUnlock()
 		}
-	})
-	http.HandleFunc("/stats", func(w http.ResponseWriter, r *http.Request) {
-		data := map[string]interface{}{
-			"activeConnections": len(bot.AllConns),
-			"activeGames":       len(bot.LinkCodes), //probably an inaccurate metric
-			"totalGuilds":       len(bot.AllGuilds),
-		}
-		jsonBytes, err := json.Marshal(data)
-		if err != nil {
-			log.Println(err)
-		}
-		w.Write(jsonBytes)
 	})
 
 	log.Fatal(http.ListenAndServe(":"+port, nil))
@@ -575,7 +453,7 @@ func (bot *Bot) updatesListener() func(dg *discordgo.Session, guildID string, so
 						}
 						log.Println("Detected transition to Lobby")
 
-						delay := guild.GetDelay(guild.AmongUsData.GetPhase(), game.LOBBY)
+						delay := guild.PersistentGuildData.Delays.GetDelay(guild.AmongUsData.GetPhase(), game.LOBBY)
 
 						guild.AmongUsData.SetAllAlive()
 						guild.AmongUsData.SetPhase(phase)
@@ -593,7 +471,7 @@ func (bot *Bot) updatesListener() func(dg *discordgo.Session, guildID string, so
 						}
 						log.Println("Detected transition to Tasks")
 						oldPhase := guild.AmongUsData.GetPhase()
-						delay := guild.GetDelay(oldPhase, game.TASKS)
+						delay := guild.PersistentGuildData.Delays.GetDelay(oldPhase, game.TASKS)
 						//when going from discussion to tasks, we should mute alive players FIRST
 						priority := AlivePriority
 
@@ -615,7 +493,7 @@ func (bot *Bot) updatesListener() func(dg *discordgo.Session, guildID string, so
 						}
 						log.Println("Detected transition to Discussion")
 
-						delay := guild.GetDelay(guild.AmongUsData.GetPhase(), game.DISCUSS)
+						delay := guild.PersistentGuildData.Delays.GetDelay(guild.AmongUsData.GetPhase(), game.DISCUSS)
 
 						guild.AmongUsData.SetPhase(phase)
 
@@ -669,50 +547,15 @@ func (bot *Bot) updatesListener() func(dg *discordgo.Session, guildID string, so
 
 							if updated {
 								data := guild.AmongUsData.GetByName(player.Name)
-								paired, userID, name := guild.UserData.AttemptPairingByMatchingNames(player.Name, data)
-
+								paired := guild.UserData.AttemptPairingByMatchingNames(player.Name, data)
 								if paired {
 									log.Println("Successfully linked discord user to player using matching names!")
-									user, found := bot.UserSettings.GetUser(userID)
-									already := false
-									if !found {
-										user = storage.UserSettings{
-											UserID:    userID,
-											UserName:  name,
-											GameNames: []string{player.Name},
-										}
-									} else {
-										for _, v := range user.GameNames {
-											if v == player.Name {
-												already = true
-												break
-											}
-										}
-										if !already {
-											user.GameNames = append(user.GameNames, player.Name)
-										}
-									}
-									//if the name was already found/listed, don't bother writing
-									if !already {
-										bot.UserSettings.UpdateUser(userID, user)
-										err := bot.StorageInterface.WriteUserSettings(userID, &user)
-										if err != nil {
-											log.Println(err)
-										}
-									}
-								} else {
-									log.Println("Attempting to link via cached user names")
-									id := bot.UserSettings.PairByName(player.Name)
-									if id != "" {
-										log.Printf("Paired %s to their cached name of %s!\n", id, player.Name)
-										guild.UserData.UpdatePlayerData(id, data)
-									}
 								}
 
 								//log.Println("Player update received caused an update in cached state")
 								if isAliveUpdated && guild.AmongUsData.GetPhase() == game.TASKS {
-									if guild.guildSettings.GetUnmuteDeadDuringTasks() {
-										// unmute players even if in tasks because unmuteDeadDuringTasks is true
+									if guild.PersistentGuildData.UnmuteDeadDuringTasks {
+										// unmute players even if in tasks because UnmuteDeadDuringTasks is true
 										guild.handleTrackedMembers(&bot.SessionManager, 0, NoPriority)
 										guild.GameStateMsg.Edit(dg, gameStateResponse(guild))
 									} else {
@@ -739,18 +582,9 @@ func (bot *Bot) updatesListener() func(dg *discordgo.Session, guildID string, so
 			case worldUpdate := <-*globalUpdates:
 				if guild, ok := bot.AllGuilds[guildID]; ok {
 					if worldUpdate.Type == GRACEFUL_SHUTDOWN {
-						go bot.gracefulShutdownWorker(dg, guild, worldUpdate.Data, worldUpdate.Message)
+						log.Printf("Received graceful shutdown message, shutting down in %d seconds", worldUpdate.Data)
 
-						bot.LinkCodeLock.Lock()
-						for i, v := range bot.LinkCodes {
-							//delete the association between the link code and the guild
-							if v == guildID {
-								delete(bot.LinkCodes, i)
-								break
-							}
-						}
-						bot.LinkCodeLock.Unlock()
-						guild.Linked = false
+						go bot.gracefulShutdownWorker(dg, guild, worldUpdate.Data)
 					}
 				}
 
@@ -765,11 +599,9 @@ func (bot *Bot) updatesListener() func(dg *discordgo.Session, guildID string, so
 	}
 }
 
-func (bot *Bot) gracefulShutdownWorker(s *discordgo.Session, guild *GuildState, seconds int, message string) {
+func (bot *Bot) gracefulShutdownWorker(s *discordgo.Session, guild *GuildState, seconds int) {
 	if guild.GameStateMsg.message != nil {
-		log.Printf("**Received graceful shutdown message, shutting down in %d seconds**", seconds)
-
-		sendMessage(s, guild.GameStateMsg.message.ChannelID, message)
+		sendMessage(s, guild.GameStateMsg.message.ChannelID, fmt.Sprintf("**I need to go offline to upgrade! Your game/lobby will be ended in %d seconds!**", seconds))
 	}
 
 	time.Sleep(time.Duration(seconds) * time.Second)
@@ -817,55 +649,52 @@ func (bot *Bot) reactionCreate() func(s *discordgo.Session, m *discordgo.Message
 func (bot *Bot) newGuild(emojiGuildID string) func(s *discordgo.Session, m *discordgo.GuildCreate) {
 	return func(s *discordgo.Session, m *discordgo.GuildCreate) {
 
-		var gs *storage.GuildSettings = nil
+		var pgd *PersistentGuildData = nil
 
-		data, err := bot.StorageInterface.GetGuildSettings(m.Guild.ID)
+		data, err := bot.StorageInterface.GetGuildData(m.Guild.ID)
 		if err != nil {
 			log.Printf("Couldn't load guild data for %s from storageDriver; using default config instead\n", m.Guild.ID)
 			log.Printf("Exact error: %s", err)
 		} else {
-			gs = data
-		}
-		if gs == nil {
-			gs = storage.MakeGuildSettings(m.Guild.ID, m.Guild.Name)
-			err := bot.StorageInterface.WriteGuildSettings(m.ID, gs)
+			tempPgd, err := FromData(data)
 			if err != nil {
-				log.Printf("Error writing %s guild settings to storage interface: %s\n", m.Guild.ID, err)
+				log.Printf("Couldn't marshal guild data for %s; using default config instead\n", m.Guild.ID)
 			} else {
-				log.Printf("Successfully wrote %s guild settings to Storage interface!", m.Guild.ID)
+				log.Printf("Successfully loaded config from storagedriver for %s\n", m.Guild.ID)
+				pgd = tempPgd
 			}
-
 		}
-
-		userSettingsUpdateChannel := make(chan storage.UserSettingsUpdate)
+		if pgd == nil {
+			pgd = PGDDefault(m.Guild.ID)
+			data, err := pgd.ToData()
+			if err != nil {
+				log.Printf("Error marshalling %s PGD to map(!): %s\n", m.Guild.ID, err)
+			} else {
+				err := bot.StorageInterface.WriteGuildData(m.Guild.ID, data)
+				if err != nil {
+					log.Printf("Error writing %s PGD to storage interface: %s\n", m.Guild.ID, err)
+				} else {
+					log.Printf("Successfully wrote %s PGD to Storage interface!", m.Guild.ID)
+				}
+			}
+		}
 
 		log.Printf("Added to new Guild, id %s, name %s", m.Guild.ID, m.Guild.Name)
-
-		f, err := os.Create(path.Join(bot.logPath, m.Guild.ID+"_log.txt"))
-		w := io.MultiWriter(os.Stdout)
-		if err != nil {
-			log.Println("Couldn't create logger for " + m.Guild.ID + "; only using stdout for logging")
-		} else {
-			w = io.MultiWriter(f, os.Stdout)
-		}
 		bot.AllGuilds[m.ID] = &GuildState{
+			PersistentGuildData: pgd,
+
 			Linked: false,
 
-			UserData: MakeUserDataSet(),
-			Tracking: MakeTracking(),
-
+			UserData:     MakeUserDataSet(),
+			Tracking:     MakeTracking(),
 			GameStateMsg: MakeGameStateMessage(),
 
 			StatusEmojis:  emptyStatusEmojis(),
 			SpecialEmojis: map[string]Emoji{},
 
-			AmongUsData: game.NewAmongUsData(),
 			GameRunning: false,
 
-			guildSettings:             gs,
-			userSettingsUpdateChannel: userSettingsUpdateChannel,
-
-			logger: log.New(w, fmt.Sprintf("[%s | %s] ", m.Guild.ID, m.Guild.Name), log.LstdFlags|log.Lmsgprefix),
+			AmongUsData: game.NewAmongUsData(),
 		}
 
 		if emojiGuildID == "" {
@@ -899,50 +728,11 @@ func (bot *Bot) newGuild(emojiGuildID string) func(s *discordgo.Session, m *disc
 
 		go bot.updatesListener()(s, m.Guild.ID, &socketUpdates, &phaseUpdates, &playerUpdates, &lobbyUpdates, &globalUpdates)
 
-		go bot.userSettingsUpdateWorker(userSettingsUpdateChannel)
 	}
 }
 
-func (bot *Bot) userSettingsUpdateWorker(channel chan storage.UserSettingsUpdate) {
-	for {
-		select {
-		case update := <-channel:
-			log.Println("Storage worker received update: " + update.UserID)
-			user, found := bot.UserSettings.GetUser(update.UserID)
-			already := false
-			if found {
-				if update.Type == storage.GAME_NAME {
-					for _, v := range user.GameNames {
-						if v == update.Value {
-							already = true
-							break
-						}
-					}
-					if !already {
-						user.GameNames = append(user.GameNames, update.Value)
-					}
-				}
-			} else {
-				user = storage.UserSettings{
-					UserID: update.UserID,
-					//TODO no good way to get ahold of this username :/
-					UserName:  "",
-					GameNames: []string{update.Value},
-				}
-			}
-			if !already {
-				bot.UserSettings.UpdateUser(update.UserID, user)
-				err := bot.StorageInterface.WriteUserSettings(update.UserID, &user)
-				if err != nil {
-					log.Println(err)
-				}
-			}
-		}
-	}
-}
-
-func (bot *Bot) newAltGuild(s *discordgo.Session, m *discordgo.GuildCreate) {
-	bot.SessionManager.RegisterGuildSecondSession(m.Guild.ID)
+func newAltGuild(s *discordgo.Session, m *discordgo.GuildCreate) {
+	//TODO ensure that the 2nd bot is also present in the same guilds as the original bot (to ensure it can also issue requests)
 }
 
 func (bot *Bot) handleMessageCreate(guild *GuildState, s *discordgo.Session, m *discordgo.MessageCreate) {
@@ -951,38 +741,36 @@ func (bot *Bot) handleMessageCreate(guild *GuildState, s *discordgo.Session, m *
 		return
 	}
 
-	g, err := s.State.Guild(m.GuildID)
+	g, err := s.State.Guild(guild.PersistentGuildData.GuildID)
 	if err != nil {
 		log.Println(err)
 		return
 	}
 
 	contents := m.Content
-	prefix := guild.CommandPrefix()
 
-	if strings.HasPrefix(contents, prefix) {
+	if strings.HasPrefix(contents, guild.PersistentGuildData.CommandPrefix) {
 		//either BOTH the admin/roles are empty, or the user fulfills EITHER perm "bucket"
-		perms := guild.EmptyAdminAndRolePerms()
+		perms := len(guild.PersistentGuildData.AdminUserIDs) == 0 && len(guild.PersistentGuildData.PermissionedRoleIDs) == 0
 		if !perms {
-			perms = guild.HasAdminPerms(m.Author) || guild.HasRolePerms(m.Member)
+			perms = guild.HasAdminPermissions(m.Author.ID) || guild.HasRolePermissions(s, m.Author.ID)
 		}
 		if !perms && g.OwnerID != m.Author.ID {
 			s.ChannelMessageSend(m.ChannelID, "User does not have the required permissions to execute this command!")
 		} else {
 			oldLen := len(contents)
-			contents = strings.Replace(contents, prefix+" ", "", 1)
+			contents = strings.Replace(contents, guild.PersistentGuildData.CommandPrefix+" ", "", 1)
 			if len(contents) == oldLen { //didn't have a space
-				contents = strings.Replace(contents, prefix, "", 1)
+				contents = strings.Replace(contents, guild.PersistentGuildData.CommandPrefix, "", 1)
 			}
 
 			if len(contents) == 0 {
-				if len(prefix) <= 1 {
+				if len(guild.PersistentGuildData.CommandPrefix) <= 1 {
 					// prevent bot from spamming help message whenever the single character
 					// prefix is sent by mistake
 					return
 				} else {
-					embed := helpResponse(Version, prefix, AllCommands)
-					s.ChannelMessageSendEmbed(m.ChannelID, &embed)
+					s.ChannelMessageSend(m.ChannelID, helpResponse(Version, guild.PersistentGuildData.CommandPrefix))
 				}
 			} else {
 				args := strings.Split(contents, " ")

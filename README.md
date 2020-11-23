@@ -1,5 +1,5 @@
 <p align="center">
-    <img src="assets/AutoMuteUsBanner_cropped.png" width="800">
+    <img src="assets/botProfilePicture.jpg" width="196">
 </p>
 
 <p align="center">
@@ -14,11 +14,7 @@
     </a>
 </p>
 
-<p align="center">
-    Banner and Bot profile picture courtesy of <a href=https://aspen-cyborg.tumblr.com/>Smiles</a>!
-</p>
-
-# AutoMuteUs (BETA) 
+# AmongUsAutoMute (BETA) 
 
 Discord Bot to harness Among Us game data, and automatically mute/unmute players during the course of the game!
 
@@ -26,7 +22,6 @@ Works in conjunction with [amonguscapture](https://github.com/denverquane/amongu
 
 **This program is in Beta. While we are confident about the basic functionality, there will still be issues or pecularities with how the program functions! We are actively working to resolve these issues!**
 
-Have any questions, concerns, bug reports, or just want to chat? Join the discord at https://discord.gg/ZkqZSWF!
 
 # Basic Requirements
 
@@ -56,11 +51,11 @@ Now follow either the `Easiest` install, or the `Install From Source`:
 If you don't see one for the current version, then simply create a new text document called `final.txt`, and put `DISCORD_BOT_TOKEN = ` as the contents.
 2. Paste the Bot Token you obtained in the pre-installation into the `final.txt` file, after the `=` sign for the `DISCORD_BOT_TOKEN`.
 3. Run the executable from step 1, either by double-clicking or using `./amongusdiscord.exe` in a terminal window.
-4. [Download the latest `amonguscapture.exe`](https://github.com/denverquane/amonguscapture/releases).
-5. Start Among Us and host a game or join a game.
-6. Automatically start capture by issuing the `.au n` (or `.au new`) command to the bot via Discord. The bot will send you a Direct Message with a link like: aucapture://<host>:8123/<connectcode>?insecure. Click this link and the capture executable will automatically be launched.
-Alternatively, manually start the capture executable from step 4 and type in the Connect Code from amongusdiscord.exe (should be 8 characters long), Connect, and issue the bot the command .au n(ew) via Discord.
-7. Have fun and enjoy!
+4. [Download the latest `amonguscapture.exe`](https://github.com/denverquane/amonguscapture/releases). If you are running the Discord bot remotely,
+you can add a `host.txt` file in the same folder with the contents `http://<host>:<port>` to point to that instance, but this is totally optional.
+5. Start Among Us and host a game or join a game. 
+6. Automatically start capture by issuing the .au n(ew) command to the bot via Discord. The bot will send you a Direct Message with a link like: aucapture://<host>:8123/<connectcode>?insecure. Click this link and the capture executable will automatically be launched. Alternatively, manually start the capture executable from step 4 and type in the Connect Code from amongusdiscord.exe (should be 8 characters long), Connect, and issue the bot the command .au n(ew) via Discord.
+7. Have fun and enjoy a seamless game with no micromanaging!
 
 Congrats, if you followed the instructions correctly, the bot should now be running! See the Sample Usage section below for details.
 
@@ -73,7 +68,7 @@ Congrats, if you followed the instructions correctly, the bot should now be runn
 ## Remote Hosted Bot Requirements
 
 Remote usage (Capture app and bot app running on seperate networks) is possible with AutoMuteUs however it is recommended only for those familiar with advanced networking topics such as Static IPs, Dynamic DNS, and Port Mappings. If you are not already comfortable with these topics it is not recommended that you attempt to set up remote use. If you wish to have remote users run the capture app then you will need the following:
-1. The computer hosting the bot must have a static IP on your local network (preferably outside your DHCP pool, or have a reserved IP address).
+1. The computer hosting the bot must have a static IP on your local network (pregerably outside your DHCP pool, or have a reserved IP address).
 2. You must create a port mapping on your router to map port 8123 to your bot host (UniFi users please note that the current UniFi controller does not enable new port mappings by default)
 3. Unless you have a static IP from your ISP you will need a dynamic DNS service such as DuckDNS, Afraid, or No-IP. You will also need that service set up to automatically update your IP when it changes.
 
@@ -92,17 +87,18 @@ If you play in larger groups of 8+ people, this is recommended to not be rate-li
 
 ### Advanced. Only configure these variables if you know what you're doing
 - `EMOJI_GUILD_ID`: If your bot is a member of multiple guilds, this ID can be used to specify the single guild that it should use for emojis (no need to add the emojis to ALL servers).
-- `PORT`: The **internal** port the Bot will use for incoming Socket.io communications. Defaults to 8123.
-- `HOST`: The **externally-accessible URL** for the discord bot. For example, `http://test.com:8123`.
-This is used to provide the linking URI to the capture, via the Direct Message the bot sends you when typing `.au new`.
-**You must specify `http://` or `https://` accordingly, and specify the port if non-8123. For example, `https://your-app.herokuapp.com:443`**
-- `SERVICE_PORT`: Port used for graceful shutdowns and stats via HTTP GET. Defaults to 5000
-- `CONFIG_PATH`: Alternate filesystem path for guild and user config files. Defaults to `./`
-- `LOG_PATH`: Filesystem path for log files. Defaults to `./`
-- `CAPTURE_TIMEOUT`: How many seconds of no capture events received before the Bot will terminate the associated game/connection. Defaults to 600 seconds.
-### HIGHLY advanced. Probably don't ever touch these!
-- `NUM_SHARDS`: Num shards provided to the Discord API.
-- `SHARD_ID`: Shard ID used to identify with the Discord API. Needs to be strictly less than `NUM_SHARDS`
+- `PORT`: The port the Bot will use for incoming Socket.io communications from the capture client. Defaults to 8123.
+You must specify more (comma-delimited ports) if you are running with `NUM_SHARDS` > 1. For example, with 3 shards, `PORT = 8123,8124,8125`
+- `EXT_PORT`: The port to use for the capture url. Must be a valid port number, or "protocol" to not include a port in the url. Defaults to PORT.
+- `SERVER_URL`: The externally-accessible URL for *this* instance of the discord bot. For example, `http://test.com`.
+This is used to provide the linking URI to the capture, via the Direct Message the bot sends you when typing `.au new` (in conjunction with the PORT above).
+**You must specify `http://` or `https://` accordingly as part of the URL**
+- `CONFIG_PATH`: Alternate filesystem path for guild config files. Defaults to `./`
+- `NUM_SHARDS`: How many total bot shard instances you'll be running in your current stack.
+
+## Google Firestore Config (Optional)
+- `GOOGLE_APPLICATION_CREDENTIALS`: Path to credentials JSON file used to access the Google Firestore API and create/update config documents. If specified, be sure to specify the following PROJECT_ID below as well.
+- `FIRESTORE_PROJECT_ID`: The specific Project ID for the Firestore operations you intend this bot to use.
 
 ## Deploy to Heroku
 [![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy)
@@ -115,7 +111,7 @@ DISCORD_BOT_TOKEN = xxx
 EXT_PORT = 443
 GOVERSION = 1.15
 PORT = 443
-HOST = https://your-app.herokuapp.com:443
+SERVER_URL = https:// your-app.herokuapp.com:443
 (Click on open app if you are unsure. Be sure to remove the space and ensure no slash "/" at the end, this fixed it for me)
 
 5) Check the app's logs. See if it is up and running with no issues.
@@ -132,6 +128,8 @@ Get Playing!
 
 If you want to view command usage or see the available options, type `.au` or `.au help` in your Discord channel.
 
+If you need to add more players to the tracking list, they can be added using the reaction emojis once back in the lobby. Or, manually using `.au link @player color`.
+
 # Bot Commands
 The Discord Bot uses the `.au` prefix for any commands
 
@@ -147,11 +145,8 @@ The Discord Bot uses the `.au` prefix for any commands
 |`.au settings`|`.au s`||View and change settings for the bot, such as the command prefix or mute behavior||
 |`.au force`|`.au f`|stage|Force a transition to a stage if you encounter a problem in the state|`.au f task` or `.au f d`(discuss)|
 |`.au pause`|`.au p`||Pause the bot, and don't let it automute anyone until unpaused. **will not un-mute muted players, be careful!**||
-|`.au log`||message|Issue a small log message that will help you find the message later, if a problem occurs|`.au log Something bad happened`|
 
 # Similar Projects
-
-- [Imposter](https://github.com/molenzwiebel/Impostor): Similar bot that uses private Discord channels instead of mute/deafen. Also uses a dummy player joining the game and "spectating" to get game information; no capture needed (although loses the 10th player slot).
 
 - [AmongUsBot](https://github.com/alpharaoh/AmongUsBot): Without their original Python program
 with a lot of the OCR/Discord functionality, I never would have even thought of this idea! Not currently maintained

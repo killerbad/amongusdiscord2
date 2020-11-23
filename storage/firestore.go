@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"encoding/json"
 	"google.golang.org/api/iterator"
 
 	"cloud.google.com/go/firestore"
@@ -27,8 +26,8 @@ func (fs *FirestoreDriver) Close() error {
 	return fs.client.Close()
 }
 
-func (fs *FirestoreDriver) GetGuildSettings(guildID string) (*GuildSettings, error) {
-	docs := fs.client.Collection("guildSettings").Where("guildID", "==", guildID).Documents(fs.ctx)
+func (fs *FirestoreDriver) GetGuildData(guildID string) (map[string]interface{}, error) {
+	docs := fs.client.Collection("guilds").Where("guildID", "==", guildID).Documents(fs.ctx)
 	for {
 		doc, err := docs.Next()
 		if err == iterator.Done {
@@ -37,74 +36,13 @@ func (fs *FirestoreDriver) GetGuildSettings(guildID string) (*GuildSettings, err
 		if err != nil {
 			return nil, err
 		}
-		data := doc.Data()
-
-		bytes, err := json.Marshal(data)
-		if err != nil {
-			return nil, err
-		}
-		settings := GuildSettings{}
-		err = json.Unmarshal(bytes, &settings)
-		if err != nil {
-			return nil, err
-		}
-
-		return &settings, nil
+		return doc.Data(), nil
 	}
+
 }
 
-func (fs *FirestoreDriver) WriteGuildSettings(guildID string, settings *GuildSettings) error {
-	bytes, err := json.Marshal(settings)
-	if err != nil {
-		return err
-	}
-	data := map[string]interface{}{}
-	err = json.Unmarshal(bytes, &data)
-	if err != nil {
-		return err
-	}
-	_, err = fs.client.Collection("guildSettings").Doc(guildID).Set(fs.ctx, data)
-	return err
-}
-
-func (fs *FirestoreDriver) GetAllUserSettings() *UserSettingsCollection {
-	col := MakeUserSettingsCollection()
-	docs := fs.client.Collection("userSettings").Documents(fs.ctx)
-	for {
-		doc, err := docs.Next()
-		if err == iterator.Done {
-			return col
-		}
-		if err != nil {
-			return col
-		}
-		data := doc.Data()
-
-		bytes, err := json.Marshal(data)
-		if err != nil {
-			return col
-		}
-		settings := UserSettings{}
-		err = json.Unmarshal(bytes, &settings)
-		if err != nil {
-			return col
-		}
-
-		col.users[settings.UserID] = &settings
-	}
-}
-
-func (fs *FirestoreDriver) WriteUserSettings(userID string, settings *UserSettings) error {
-	bytes, err := json.Marshal(settings)
-	if err != nil {
-		return err
-	}
-	data := map[string]interface{}{}
-	err = json.Unmarshal(bytes, &data)
-	if err != nil {
-		return err
-	}
-	_, err = fs.client.Collection("userSettings").Doc(userID).Set(fs.ctx, data)
+func (fs *FirestoreDriver) WriteGuildData(guildID string, data map[string]interface{}) error {
+	_, err := fs.client.Collection("guilds").Doc(guildID).Set(fs.ctx, data)
 	return err
 }
 

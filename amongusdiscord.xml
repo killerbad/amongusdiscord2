@@ -1,5 +1,5 @@
 <?xml version="1.0"?>
-<Container version="2">
+<Container version="2">  
   <Name>amongusdiscord2</Name>
   <Repository>killerbad21/amongusdiscord2</Repository>
   <Registry>https://hub.docker.com/r/killerbad21/amongusdiscord2/</Registry>
@@ -15,7 +15,6 @@ Works in conjunction with amonguscapture&#xD;
 &#xD;
 This program is in Beta. While we are confident about the basic functionality, there will still be issues or pecularities with how the program functions! We are actively working to resolve these issues!&#xD;
 &#xD;
-Have any questions, concerns, bug reports, or just want to chat? Join the discord at https://discord.gg/ZkqZSWF!&#xD;
 &#xD;
 unRAID template by Argash</Overview>
   <Category>GameServers: Tools: Other: Network:Voip Network:Messenger</Category>
@@ -34,7 +33,6 @@ Works in conjunction with amonguscapture&#xD;
 &#xD;
 This program is in Beta. While we are confident about the basic functionality, there will still be issues or pecularities with how the program functions! We are actively working to resolve these issues!&#xD;
 &#xD;
-Have any questions, concerns, bug reports, or just want to chat? Join the discord at https://discord.gg/ZkqZSWF!&#xD;
 &#xD;
 unRAID template by Argash</Description>
   <Networking>

@@ -1,1 +1,1 @@
-TODO private channel for posting round transitions/debug info
+TODO Refactor UserData to use properly locking getters/setters/transformers

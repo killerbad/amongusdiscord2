@@ -2,6 +2,7 @@ package discord
 
 import (
 	"github.com/bwmarrin/discordgo"
+	"log"
 	"sync"
 	"time"
 )
@@ -77,6 +78,7 @@ func (gsm *GameStateMessage) Edit(s *discordgo.Session, me *discordgo.MessageEmb
 }
 
 func (gsm *GameStateMessage) EditWorker(s *discordgo.Session, delay int) {
+	log.Printf("Waiting %d secs to update the status message to not be rate-limited", delay)
 	time.Sleep(time.Duration(delay) * time.Second)
 
 	gsm.lock.Lock()

@@ -11,13 +11,13 @@ import (
 )
 
 type UserDataSet struct {
-	userDataSet map[string]UserData
+	userDataSet map[string]game.UserData
 	lock        sync.RWMutex
 }
 
 func MakeUserDataSet() UserDataSet {
 	return UserDataSet{
-		userDataSet: map[string]UserData{},
+		userDataSet: map[string]game.UserData{},
 		lock:        sync.RWMutex{},
 	}
 }
@@ -42,13 +42,13 @@ func (uds *UserDataSet) GetCountLinked() int {
 	return LinkedPlayerCount
 }
 
-func (uds *UserDataSet) AddFullUser(user UserData) {
+func (uds *UserDataSet) AddFullUser(user game.UserData) {
 	uds.lock.Lock()
 	uds.userDataSet[user.GetID()] = user
 	uds.lock.Unlock()
 }
 
-func (uds *UserDataSet) UpdateUserData(userID string, data UserData) {
+func (uds *UserDataSet) UpdateUserData(userID string, data game.UserData) {
 	uds.lock.Lock()
 	uds.userDataSet[userID] = data
 	uds.lock.Unlock()
@@ -78,7 +78,7 @@ func (uds *UserDataSet) UpdatePlayerMappingByName(name string, data *game.Player
 	}
 }
 
-func (uds *UserDataSet) AttemptPairingByMatchingNames(name string, data *game.PlayerData) (bool, string, string) {
+func (uds *UserDataSet) AttemptPairingByMatchingNames(name string, data *game.PlayerData) bool {
 	uds.lock.Lock()
 	defer uds.lock.Unlock()
 	name = strings.ReplaceAll(strings.ToLower(name), " ", "")
@@ -87,11 +87,11 @@ func (uds *UserDataSet) AttemptPairingByMatchingNames(name string, data *game.Pl
 			if strings.ReplaceAll(strings.ToLower(v.GetUserName()), " ", "") == name || strings.ReplaceAll(strings.ToLower(v.GetNickName()), " ", "") == name {
 				v.SetPlayerData(data)
 				uds.userDataSet[userID] = v
-				return true, userID, v.user.userName
+				return true
 			}
 		}
 	}
-	return false, "", ""
+	return false
 }
 
 func (uds *UserDataSet) ClearPlayerData(userID string) {
@@ -123,14 +123,14 @@ func (uds *UserDataSet) ClearAllPlayerData() {
 	uds.lock.Unlock()
 }
 
-func (uds *UserDataSet) GetUser(userID string) (UserData, error) {
+func (uds *UserDataSet) GetUser(userID string) (game.UserData, error) {
 	uds.lock.RLock()
 	defer uds.lock.RUnlock()
 
 	if v, ok := uds.userDataSet[userID]; ok {
 		return v, nil
 	}
-	return UserData{}, errors.New(fmt.Sprintf("No user found with ID %s", userID))
+	return game.UserData{}, errors.New(fmt.Sprintf("No user found with ID %s", userID))
 }
 
 func (uds *UserDataSet) ToEmojiEmbedFields(nameColorMap map[string]int, nameAliveMap map[string]bool, emojis AlivenessEmojis) []*discordgo.MessageEmbedField {
