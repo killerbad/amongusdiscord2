@@ -1,42 +1,45 @@
 package storage
 
 import (
-	"sync"
-
 	"github.com/bwmarrin/discordgo"
 	"github.com/denverquane/amongusdiscord/game"
-	"github.com/denverquane/amongusdiscord/locale"
+	"sync"
 )
 
 type GuildSettings struct {
-	CommandPrefix string `json:"commandPrefix"`
-	Language      string `json:"language"`
+	GuildID               string `json:"guildID"`
+	GuildName             string `json:"guildName"`
+	CommandPrefix         string `json:"commandPrefix"`
+	DefaultTrackedChannel string `json:"defaultTrackedChannel"`
 
 	AdminUserIDs          []string        `json:"adminIDs"`
 	PermissionRoleIDs     []string        `json:"permissionRoleIDs"`
 	Delays                game.GameDelays `json:"delays"`
 	VoiceRules            game.VoiceRules `json:"voiceRules"`
+	ApplyNicknames        bool            `json:"applyNicknames"`
 	UnmuteDeadDuringTasks bool            `json:"unmuteDeadDuringTasks"`
 
 	lock sync.RWMutex
 }
 
-func MakeGuildSettings() *GuildSettings {
+func MakeGuildSettings(guildID, guildName string) *GuildSettings {
 	return &GuildSettings{
+		GuildID:               guildID,
+		GuildName:             guildName,
 		CommandPrefix:         ".au",
-		Language:              locale.DefaultLang,
+		DefaultTrackedChannel: "",
 		AdminUserIDs:          []string{},
 		PermissionRoleIDs:     []string{},
 		Delays:                game.MakeDefaultDelays(),
 		VoiceRules:            game.MakeMuteAndDeafenRules(),
+		ApplyNicknames:        false,
 		UnmuteDeadDuringTasks: false,
 		lock:                  sync.RWMutex{},
 	}
 }
 
-func (gs *GuildSettings) LocalizeMessage(args ...interface{}) string {
-	args = append(args, gs.GetLanguage())
-	return locale.LocalizeMessage(args...)
+func (gs *GuildSettings) EmptyAdminAndRolePerms() bool {
+	return len(gs.AdminUserIDs) == 0 && len(gs.PermissionRoleIDs) == 0
 }
 
 func (gs *GuildSettings) HasAdminPerms(user *discordgo.User) bool {
@@ -99,12 +102,20 @@ func (gs *GuildSettings) SetUnmuteDeadDuringTasks(v bool) {
 	gs.UnmuteDeadDuringTasks = v
 }
 
-func (gs *GuildSettings) GetLanguage() string {
-	return gs.Language
+func (gs *GuildSettings) GetDefaultTrackedChannel() string {
+	return gs.DefaultTrackedChannel
 }
 
-func (gs *GuildSettings) SetLanguage(l string) {
-	gs.Language = l
+func (gs *GuildSettings) SetDefaultTrackedChannel(c string) {
+	gs.DefaultTrackedChannel = c
+}
+
+func (gs *GuildSettings) GetApplyNicknames() bool {
+	return gs.ApplyNicknames
+}
+
+func (gs *GuildSettings) SetApplyNicknames(v bool) {
+	gs.ApplyNicknames = v
 }
 
 func (gs *GuildSettings) GetDelay(oldPhase, newPhase game.Phase) int {

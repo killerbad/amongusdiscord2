@@ -21,29 +21,63 @@ func (rules *VoiceRules) GetVoiceState(isAlive, isTracked bool, phase Phase) (bo
 func MakeMuteAndDeafenRules() VoiceRules {
 	rules := VoiceRules{
 		MuteRules: map[PhaseNameString]map[string]bool{
-			PhaseNames[LOBBY]: {
+			PhaseNames[LOBBY]: map[string]bool{
 				"alive": false,
 				"dead":  false,
 			},
-			PhaseNames[TASKS]: {
+			PhaseNames[TASKS]: map[string]bool{
 				"alive": true,
 				"dead":  false,
 			},
-			PhaseNames[DISCUSS]: {
+			PhaseNames[DISCUSS]: map[string]bool{
 				"alive": false,
 				"dead":  true,
 			},
 		},
 		DeafRules: map[PhaseNameString]map[string]bool{
-			PhaseNames[LOBBY]: {
+			PhaseNames[LOBBY]: map[string]bool{
 				"alive": false,
 				"dead":  false,
 			},
-			PhaseNames[TASKS]: {
+			PhaseNames[TASKS]: map[string]bool{
 				"alive": true,
 				"dead":  false,
 			},
-			PhaseNames[DISCUSS]: {
+			PhaseNames[DISCUSS]: map[string]bool{
+				"alive": false,
+				"dead":  false,
+			},
+		},
+	}
+	return rules
+}
+
+func MakeMuteOnlyRules() VoiceRules {
+	rules := VoiceRules{
+		MuteRules: map[PhaseNameString]map[string]bool{
+			PhaseNames[LOBBY]: map[string]bool{
+				"alive": false,
+				"dead":  false,
+			},
+			PhaseNames[TASKS]: map[string]bool{
+				"alive": true,
+				"dead":  true,
+			},
+			PhaseNames[DISCUSS]: map[string]bool{
+				"alive": false,
+				"dead":  true,
+			},
+		},
+		DeafRules: map[PhaseNameString]map[string]bool{
+			PhaseNames[LOBBY]: map[string]bool{
+				"alive": false,
+				"dead":  false,
+			},
+			PhaseNames[TASKS]: map[string]bool{
+				"alive": false,
+				"dead":  false,
+			},
+			PhaseNames[DISCUSS]: map[string]bool{
 				"alive": false,
 				"dead":  false,
 			},

@@ -1,10 +1,6 @@
 package game
 
-import (
-	"strings"
-
-	"github.com/nicksnyder/go-i18n/v2/i18n"
-)
+import "strings"
 
 // Phase type
 type Phase int
@@ -16,7 +12,7 @@ const (
 	DISCUSS Phase = iota
 	MENU    Phase = iota
 	//VOTING        Phase = iota
-	GAMEOVER      Phase = iota
+	//GAMEOVER      Phase = iota
 	UNINITIALIZED Phase = iota
 )
 
@@ -32,21 +28,6 @@ const (
 	EXILED       PlayerAction = iota
 )
 
-type GameResult int16
-
-const (
-	HumansByVote GameResult = iota
-	HumansByTask
-	ImpostorByVote
-	ImpostorByKill
-	ImpostorBySabotage
-	ImpostorDisconnect
-	HumansDisconnect
-)
-
-type GameWinner struct {
-}
-
 type PhaseNameString string
 
 // PhaseNames for lowercase, possibly for translation if needed
@@ -57,20 +38,9 @@ var PhaseNames = map[Phase]PhaseNameString{
 	MENU:    "MENU",
 }
 
-var PhaseMessages = map[Phase]*i18n.Message{
-	LOBBY:   {ID: "state.phase.LOBBY", Other: "LOBBY"},
-	TASKS:   {ID: "state.phase.TASKS", Other: "TASKS"},
-	DISCUSS: {ID: "state.phase.DISCUSSION", Other: "DISCUSSION"},
-	MENU:    {ID: "state.phase.MENU", Other: "MENU"},
-}
-
-// ToString for a Phase
+// ToString for a phase
 func (phase *Phase) ToString() PhaseNameString {
 	return PhaseNames[*phase]
-}
-
-func (phase *Phase) ToLocale() *i18n.Message {
-	return PhaseMessages[*phase]
 }
 
 // Player struct

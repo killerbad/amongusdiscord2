@@ -24,8 +24,7 @@
 config.txt
 final.txt
 final.env
-*log.txt
-.env
+config.txt
 
 # logs file
 logs.txt
