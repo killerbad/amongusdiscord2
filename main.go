@@ -149,7 +149,7 @@ func discordMainWrapper() error {
 
 	galactusClient, err := discord.NewGalactusClient(galactusAddr)
 	if err != nil {
-		log.Println("Error connecting to Galactus!")
+		log.Println("Error connecting to Galactus!"+ galactusAddr)
 		return err
 	}
 
