@@ -80,6 +80,11 @@ unRAID template by Argash</Description>
       <Name>REDIS_ADDR</Name>
       <Mode/>
     </Variable>
+    <Variable>
+      <Value/>
+      <Name>GALACTUS_ADDR</Name>
+      <Mode/>
+    </Variable>
   </Environment>
   <Labels/>
   <Config Name="PORT" Target="" Default="" Mode="tcp" Description="The port the Bot will use for incoming Socket.io communications from the capture client. Defaults to 8123. You must specify more (comma-delimited ports) if you are running with NUM_SHARDS &amp;gt; 1. For example, with 3 shards, PORT = 8123,8124,8125" Type="Port" Display="always" Required="true" Mask="false">8123</Config>
@@ -87,5 +92,6 @@ unRAID template by Argash</Description>
   <Config Name="EXT_PORT" Target="" Default="" Mode="tcp" Description="The port to use for the capture url. Must be a valid port number, or " Type="Port" Display="always" Required="false" Mask="false">8123</Config>
   <Config Name="SERVER_URL" Target="SERVER_URL" Default="" Mode="" Description="The externally-accessible URL for this instance of the discord bot. For example, http://test.com. This is used to provide the linking URI to the capture, via the Direct Message the bot sends you when typing .au new (in conjunction with the PORT above). You must specify http:// or https:// accordingly as part of the URL" Type="Variable" Display="always" Required="false" Mask="false"></Config>
   <Config Name="DISCORD_BOT_TOKEN_2" Target="DISCORD_BOT_TOKEN_2" Default="" Mode="" Description=" (Optional) A second Bot Token to be used to distribute the mute/deafen requests to Discord. If you play in larger groups of 8+ people, this is recommended to not be rate-limited (delayed) by Discord when rounds change!" Type="Variable" Display="always" Required="false" Mask="false"/>
-  <Config Name="REDIS_ADDR" Target="REDIS_ADDR" Default="" Mode="" Description=" (Optional) A second Bot Token to be used to distribute the mute/deafen requests to Discord. If you play in larger groups of 8+ people, this is recommended to not be rate-limited (delayed) by Discord when rounds change!" Type="Variable" Display="always" Required="false" Mask="false"/>
+  <Config Name="GALACTUS_ADDR" Target="GALACTUS_ADDR" Default="" Mode="" Description=" (Optional) A second Bot Token to be used to distribute the mute/deafen requests to Discord. If you play in larger groups of 8+ people, this is recommended to not be rate-limited (delayed) by Discord when rounds change!" Type="Variable" Display="always" Required="false" Mask="false"/>
+  <Config Name="GALACTUS_ADDR" Target="GALACTUS_ADDR" Default="" Mode="" Description=" (Optional) A second Bot Token to be used to distribute the mute/deafen requests to Discord. If you play in larger groups of 8+ people, this is recommended to not be rate-limited (delayed) by Discord when rounds change!" Type="Variable" Display="always" Required="false" Mask="false"/>
 </Container>
