@@ -22,7 +22,7 @@ import (
 )
 
 var (
-	version = "5.0.0"
+	version = "6.9.0"
 	commit  = "none"
 	date    = "unknown"
 )
@@ -30,7 +30,7 @@ var (
 const DefaultURL = "http://localhost:8123"
 
 func main() {
-	//seed the rand generator (used for making connection codes)
+	// seed the rand generator (used for making connection codes)
 	rand.Seed(time.Now().Unix())
 	err := discordMainWrapper()
 	if err != nil {
@@ -149,7 +149,7 @@ func discordMainWrapper() error {
 
 	galactusClient, err := discord.NewGalactusClient(galactusAddr)
 	if err != nil {
-		log.Println("Error connecting to Galactus!"+ galactusAddr)
+		log.Println("Error connecting to Galactus!")
 		return err
 	}
 
@@ -176,7 +176,9 @@ func discordMainWrapper() error {
 		return err
 	}
 
-	go psql.LoadAndExecFromFile("./storage/postgres.sql")
+	if os.Getenv("AUTOMUTEUS_OFFICIAL") == "" {
+		go psql.LoadAndExecFromFile("./storage/postgres.sql")
+	}
 
 	log.Println("Bot is now running.  Press CTRL-C to exit.")
 	sc := make(chan os.Signal, 1)

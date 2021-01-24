@@ -1,85 +1,112 @@
 package metrics
 
 import (
+	"context"
+	"errors"
+	"github.com/automuteus/utils/pkg/rediskey"
 	"github.com/go-redis/redis/v8"
 	"github.com/prometheus/client_golang/prometheus"
-	"sync"
-	"time"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"log"
+	"net/http"
+	"strconv"
 )
 
-const MAX_TTL_MINUTES = 10
-
-type MetricsEventType int
+type EventType int
 
 const (
-	Generic MetricsEventType = iota
-	MuteDeafen
+	MuteDeafenOfficial EventType = iota
 	MessageCreateDelete
 	MessageEdit
 	ReactionAdd
+	MuteDeafenCapture
+	MuteDeafenWorker
+	InvalidRequest
+	OfficialRequest //must be the last metric
 )
 
-type MetricsCollector struct {
-	data map[int64]MetricsEventType
-	lock sync.RWMutex
+var MetricTypeStrings = []string{
+	"mute_deafen_official",
+	"message_create_delete",
+	"message_edit",
+	"reaction_add_remove",
+	"mute_deafen_capture",
+	"mute_deafen_worker",
+	"invalid_request",
+	"official_request", //must be the last request
 }
 
-// Describe is implemented with DescribeByCollect. That's possible because the
-// Collect method will always return the same two metrics with the same two
-// descriptors.
-func (cc MetricsObserverCollector) Describe(ch chan<- *prometheus.Desc) {
-	prometheus.DescribeByCollect(cc, ch)
+type Collector struct {
+	counterDesc *prometheus.Desc
+	client      *redis.Client
+	commit      string
+	nodeID      string
 }
 
-// RedisObserverCollector implements the Collector interface.
-type MetricsObserverCollector struct {
-	MetricsObserver *MetricsObserver
+func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
+	ch <- c.counterDesc
 }
 
-func NewMetricsCollector() *MetricsCollector {
-	return &MetricsCollector{
-		data: make(map[int64]MetricsEventType),
-		lock: sync.RWMutex{},
-	}
-}
+func (c *Collector) Collect(ch chan<- prometheus.Metric) {
+	official := int64(0)
+	for i, str := range MetricTypeStrings {
+		if i != int(OfficialRequest) {
+			v, err := c.client.Get(context.Background(), rediskey.RequestsByType(str)).Result()
+			if !errors.Is(err, redis.Nil) && err != nil {
+				log.Println(err)
+				continue
+			} else {
+				num := int64(0)
+				if v != "" {
+					num, err = strconv.ParseInt(v, 10, 64)
+					if err != nil {
+						log.Println(err)
+						num = 0
+					}
+				}
 
-func (mc *MetricsCollector) RecordDiscordRequests(client *redis.Client, requestType MetricsEventType, num int64) {
-	t := time.Now().UnixNano()
-
-	mc.lock.Lock()
-	for i := int64(0); i < num; i++ {
-		mc.data[t+i] = requestType
-	}
-
-	mc.lock.Unlock()
-	go incrementDiscordRequests(client, num)
-}
-
-func (mc *MetricsCollector) TotalRequestCountInTimeFiltered(timeBack time.Duration, filter MetricsEventType) int64 {
-	cutoff := time.Now().Add(-timeBack).UnixNano()
-
-	count := int64(0)
-	mc.lock.RLock()
-	for i, v := range mc.data {
-		if i > cutoff {
-			if filter == Generic || filter == v {
-				count++
+				ch <- prometheus.MustNewConstMetric(
+					c.counterDesc,
+					prometheus.CounterValue,
+					float64(num),
+					c.nodeID,
+					str,
+				)
+				if i != int(MuteDeafenCapture) && i != int(MuteDeafenWorker) {
+					official += num
+				}
 			}
 		} else {
-			break
+			ch <- prometheus.MustNewConstMetric(
+				c.counterDesc,
+				prometheus.CounterValue,
+				float64(official),
+				c.nodeID,
+				str,
+			)
 		}
 	}
-	mc.lock.RUnlock()
-	return count
 }
 
-func (mc *MetricsCollector) prune() {
-	oldest := time.Now().Add(-MAX_TTL_MINUTES * time.Minute).UnixNano()
-	mc.lock.Lock()
-	for t := range mc.data {
-		if t < oldest {
-			delete(mc.data, t)
-		}
+func RecordDiscordRequests(client *redis.Client, requestType EventType, num int64) {
+	for i := int64(0); i < num; i++ {
+		typeStr := MetricTypeStrings[requestType]
+		client.Incr(context.Background(), rediskey.RequestsByType(typeStr))
 	}
-	mc.lock.Unlock()
+}
+
+func NewCollector(client *redis.Client, nodeID string) *Collector {
+	return &Collector{
+		counterDesc: prometheus.NewDesc("discord_requests_by_node_and_type", "Number of discord requests made, differentiated by node/type", []string{"nodeID", "type"}, nil),
+		client:      client,
+		nodeID:      nodeID,
+	}
+}
+
+func PrometheusMetricsServer(client *redis.Client, nodeID, port string) error {
+	prometheus.MustRegister(NewCollector(client, nodeID))
+
+	http.Handle("/metrics", promhttp.Handler())
+
+	return http.ListenAndServe(":"+port, nil)
 }
