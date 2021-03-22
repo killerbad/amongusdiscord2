@@ -225,9 +225,9 @@ func (bot *Bot) infoResponse(guildID string, sett *storage.GuildSettings) *disco
 	fields[2] = &discordgo.MessageEmbedField{
 		Name: sett.LocalizeMessage(&i18n.Message{
 			ID:    "responses.statsResponse.Creator",
-			Other: "Creator",
+			Other: "Editor",
 		}),
-		Value:  "Soup#4222",
+		Value:  "Alex_Hartford[Mr_sun21]#7095",
 		Inline: true,
 	}
 	fields[3] = &discordgo.MessageEmbedField{
